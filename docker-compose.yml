@@ -1,0 +1,85 @@
+services:
+  localstack:
+    image: localstack/localstack:3.8.1
+    container_name: "supercent-localstack"
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: ap-northeast-2
+      DEBUG: 0
+    ports:
+      - "4566:4566"
+    volumes: 
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  
+  queue-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      AWS_DEFAULT_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    entrypoint: >
+      sh -c "
+        sleep 5 &&
+        aws --endpoint-url=http://localstack:4566 sqs create-queue --queue-name supercent-queue
+      "
+  mongodb:
+    image: mongo:latest
+    container_name: "supercent-mongodb"
+    ports: 
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+  
+  api:
+    build: ./api
+    container_name: supercent-api
+    
+    depends_on:
+      queue-init:
+        condition: service_completed_successfully
+    environment:
+      AWS_DEFAULT_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      PORT: 3000
+      SQS_ENDPOINT: http://localstack:4566
+      SQS_QUEUE_URL: http://sqs.ap-northeast-2.localhost.localstack.cloud:4566/000000000000/supercent-queue
+    ports:
+      - "3000:3000"
+  
+  worker:
+    build: ./worker
+    container_name: supercent-worker
+    
+    depends_on:
+      queue-init:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    environment:
+      AWS_DEFAULT_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SQS_ENDPOINT: http://localstack:4566
+      SQS_QUEUE_URL: http://sqs.ap-northeast-2.localhost.localstack.cloud:4566/000000000000/supercent-queue
+      MONGO_URI: mongodb://mongodb:27017
+      MONGO_DB: supercent
+      MONGO_COLLECTION: logs
+    
+volumes:
+  localstack_data:
+  mongo_data:
