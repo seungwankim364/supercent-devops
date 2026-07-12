@@ -241,7 +241,7 @@ Route53 → ALB (Public Subnet, Multi-AZ)
 
 *(아키텍처 다이어그램 이미지: `docs/aws-architecture.png` 로 저장하면 아래에 표시됩니다)*
 
-<!-- ![AWS Architecture](./docs/aws-architecture.png) -->
+[AWS Architecture](./documents/aws-architecture.png)
 
 ### 포함 요소
 - **네트워크**: VPC(`10.20.0.0/16`), **2개 AZ**에 걸친 Public/Private Subnet, IGW, **AZ별 NAT Gateway**(고가용성), 라우팅 테이블
