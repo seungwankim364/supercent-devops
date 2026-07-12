@@ -33,7 +33,7 @@ const deleteMessage = async (receiptHandle) => {
         throw new Error("SQS_QUEUE_URL cannot be empty.");
     }
 
-    const command = new DeleteMessageCommand ({
+    const command = new DeleteMessageCommand({
         QueueUrl: queueUrl,
         ReceiptHandle: receiptHandle
     });
