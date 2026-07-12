@@ -1,10 +1,11 @@
-  FROM node:20-alpine
+FROM node:20-alpine
 
-  WORKDIR /app
+WORKDIR /app
 
-  COPY package*.json ./
-  RUN npm ci --omit=dev
+COPY package*.json ./
+  
+RUN npm ci --omit=dev
 
-  COPY . .
+COPY . .
 
-  CMD ["npm", "start"]
+CMD ["npm", "start"]

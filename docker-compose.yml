@@ -8,14 +8,12 @@ services:
       DEBUG: 0
     ports:
       - "4566:4566"
-    volumes: 
-      - localstack_data:/var/lib/localstack
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:4566/_localstack/health" ]
       interval: 10s
       timeout: 3s
       retries: 3
-  
+
   queue-init:
     image: amazon/aws-cli:latest
     depends_on:
@@ -27,25 +25,28 @@ services:
       AWS_SECRET_ACCESS_KEY: test
     volumes:
       - ./scripts/init-sqs.sh:/init-sqs.sh:ro
-    entrypoint: ["/bin/sh", "/init-sqs.sh"]
+    entrypoint: [ "/bin/sh", "/init-sqs.sh" ]
+    # One-shot init job: must NOT restart, otherwise it loops on exit 0 and                                                    
+    # api/worker (which wait for service_completed_successfully) never start.                                                  
+    restart: "no"
   mongodb:
     image: mongo:latest
     container_name: "supercent-mongodb"
-    ports: 
+    ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     restart: "unless-stopped"
-  
+
   api:
     build: ./api
-    
+
     depends_on:
       queue-init:
         condition: service_completed_successfully
@@ -59,16 +60,16 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/healthz"]
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/healthz" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     restart: "unless-stopped"
-  
+
   worker:
     build: ./worker
-    
+
     depends_on:
       queue-init:
         condition: service_completed_successfully
@@ -84,7 +85,7 @@ services:
       MONGO_DB: supercent
       MONGO_COLLECTION: logs
     restart: "unless-stopped"
-    
+
 volumes:
   localstack_data:
   mongo_data:
