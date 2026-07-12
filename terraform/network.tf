@@ -18,19 +18,19 @@ resource "aws_internet_gateway" "main" {
 
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
-  availability_zone       = "ap-northeast-2a"
-  cidr_block              = "10.0.1.0/24"
+  availability_zone       = local.azs[0]
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, 1)
   map_public_ip_on_launch = true
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_name}-public-${count.index + 1}"
+    Name = "${var.project_name}-public-1"
   })
 }
 
 resource "aws_subnet" "public2" {
   vpc_id                  = aws_vpc.main.id
-  availability_zone       = "ap-northeast-2c"
-  cidr_block              = "10.0.3.0/24"
+  availability_zone       = local.azs[1]
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, 2)
   map_public_ip_on_launch = true
 
   tags = merge(local.common_tags, {
@@ -40,18 +40,18 @@ resource "aws_subnet" "public2" {
 
 resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.main.id
-  availability_zone = "ap-northeast-2a"
-  cidr_block        = "10.0.101.0/24"
+  availability_zone = local.azs[0]
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, 101)
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_name}-private-${count.index + 1}"
+    Name = "${var.project_name}-private-1"
   })
 }
 
 resource "aws_subnet" "private2" {
   vpc_id            = aws_vpc.main.id
-  availability_zone = "ap-northeast-2c"
-  cidr_block        = "10.0.102.0/24"
+  availability_zone = local.azs[1]
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, 102)
 
   tags = merge(local.common_tags, {
     Name = "${var.project_name}-private2"
@@ -62,7 +62,7 @@ resource "aws_eip" "nat" {
   domain = "vpc"
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_name}-nat-eip-${count.index + 1}"
+    Name = "${var.project_name}-nat-eip-1"
   })
 }
 
@@ -78,14 +78,18 @@ resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public.id
 
+  depends_on = [aws_internet_gateway.main]
+
   tags = merge(local.common_tags, {
-    Name = "${var.project_name}-nat-${count.index + 1}"
+    Name = "${var.project_name}-nat-1"
   })
 }
 
 resource "aws_nat_gateway" "main2" {
   allocation_id = aws_eip.nat2.id
   subnet_id     = aws_subnet.public2.id
+
+  depends_on = [aws_internet_gateway.main]
 
   tags = merge(local.common_tags, {
     Name = "${var.project_name}-nat2"
@@ -119,7 +123,7 @@ resource "aws_route_table" "public2" {
 }
 
 resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public[count.index].id
+  subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
 
@@ -133,11 +137,11 @@ resource "aws_route_table" "private" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main[count.index].id
+    nat_gateway_id = aws_nat_gateway.main.id
   }
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_name}-private-rt-${count.index + 1}"
+    Name = "${var.project_name}-private-rt-1"
   })
 }
 
@@ -156,7 +160,7 @@ resource "aws_route_table" "private2" {
 
 resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private.id
-  route_table_id = aws_route_table.private[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 
 resource "aws_route_table_association" "private2" {

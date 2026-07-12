@@ -23,7 +23,7 @@ resource "aws_lb" "api" {
   load_balancer_type = "application"
   internal           = false
   security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  subnets            = [aws_subnet.public.id, aws_subnet.public2.id]
 
   tags = local.common_tags
 }
@@ -140,7 +140,7 @@ resource "aws_ecs_service" "api" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = [aws_subnet.private.id, aws_subnet.private2.id]
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = false
   }
@@ -164,7 +164,7 @@ resource "aws_ecs_service" "worker" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = [aws_subnet.private.id, aws_subnet.private2.id]
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = false
   }
