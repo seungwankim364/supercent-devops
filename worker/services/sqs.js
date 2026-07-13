@@ -4,7 +4,7 @@ const {
     DeleteMessageCommand
 } = require("@aws-sdk/client-sqs");
 
-// SQS 클라이언트. endpoint는 SQS_ENDPOINT로 주입(로컬=localstack / AWS=미설정 시 실제 SQS).
+// SQS 클라이언트로 endpoint는 환경변수(SQS_ENDPOINT)로 주입한다 (로컬에서는 Endpoint를 localstack으로, AWS에서는 미설정 시 실제 SQS로 연결).
 const sqsClient = new SQSClient({
     region: process.env.AWS_DEFAULT_REGION || "ap-northeast-2",
     endpoint: process.env.SQS_ENDPOINT

@@ -7,10 +7,10 @@ const logsRouter = require('./routes/logs');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// 로그 payload 크기 상한(256KB). 비정상적으로 큰 body로 인한 메모리 급증을 방지.
+// 사이즈 고정.
 app.use(express.json({ limit: "256kb" }));
 
-// 헬스체크 엔드포인트. docker-compose / ALB(target group)가 이 경로로 생존 여부를 확인.
+// 헬스체크 엔드포인트. docker-compose / ALB(target group)가 이 경로로 생존 여부를 확인 후 200 응답이 오면 정상으로 판단한다.
 app.get("/healthz", (req, res) => {
     res.status(200).send("OK");
 });

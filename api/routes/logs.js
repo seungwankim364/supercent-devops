@@ -16,7 +16,7 @@ router.post("/", async (req, res) => {
         });
         }
 
-        // 원본 로그를 payload로 감싸고, 수신 시각(receivedAt)을 함께 기록한다.
+        // 원본 로그를 payload로 코딩.
         // 이 구조는 worker가 그대로 파싱해 MongoDB에 저장한다.
         const messageBody = JSON.stringify(({
             receivedAt: new Date().toISOString(),
@@ -25,7 +25,7 @@ router.post("/", async (req, res) => {
 
         const result = await sendMessage(messageBody);
 
-        // SQS 전송 성공 → 메시지 ID를 돌려주며 200 응답.
+        // SQS 전송 성공하면 메시지 ID를 돌려주며 200 응답.
         return res.status(200).json({
             message: "Log data sent to SQS successfully.",
             messageId: result.MessageId

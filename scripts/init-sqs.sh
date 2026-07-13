@@ -1,12 +1,3 @@
-#!/bin/sh
-# LocalStack에 SQS를 초기화한다: 메인 큐 + DLQ(Dead Letter Queue)를 만들고
-# 둘을 redrive 정책으로 연결한다.
-#
-# 동작 방식: worker가 메시지 처리에 실패하면 삭제하지 않으므로, visibility timeout이
-# 지나면 메시지가 다시 보이게 된다. 이렇게 maxReceiveCount(5)회까지 수신에 실패하면
-# SQS가 해당 메시지를 자동으로 DLQ로 옮긴다(= 유실 없이 격리).
-# 이 구조는 terraform/log_storage.tf의 AWS 설정과 동일한 방식이다.
-
 set -e
 
 ENDPOINT="http://localstack:4566"

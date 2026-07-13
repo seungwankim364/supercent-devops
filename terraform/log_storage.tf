@@ -1,4 +1,4 @@
-# ── 로그 적재 파이프라인(관리형) ──────────────────────────────────────────────
+# 로그 적재 파이프라인(관리형)
 # SQS(+DLQ) → S3(raw 로그) → Glue Data Catalog → Athena(SQL 조회).
 # 로컬의 SQS+DLQ redrive 구조(scripts/init-sqs.sh)를 AWS 관리형으로 그대로 옮긴 형태.
 

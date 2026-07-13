@@ -25,9 +25,7 @@ services:
       AWS_SECRET_ACCESS_KEY: test
     volumes:
       - ./scripts/init-sqs.sh:/init-sqs.sh:ro
-    entrypoint: [ "/bin/sh", "/init-sqs.sh" ]
-    # One-shot init job: must NOT restart, otherwise it loops on exit 0 and                                                    
-    # api/worker (which wait for service_completed_successfully) never start.                                                  
+    entrypoint: [ "/bin/sh", "/init-sqs.sh" ]                                                 
     restart: "no"
   mongodb:
     image: mongo:latest

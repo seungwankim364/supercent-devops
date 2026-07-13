@@ -1,4 +1,4 @@
-# ── 네트워크 계층 ─────────────────────────────────────────────────────────────
+# 네트워크 계층
 # VPC + 2개 AZ에 걸친 Public/Private 서브넷 + IGW + AZ별 NAT + 라우팅 + VPC 엔드포인트.
 # Public: ALB/NAT 배치(인터넷 직접 노출). Private: ECS 태스크 배치(직접 노출 없음).
 
@@ -21,7 +21,7 @@ resource "aws_internet_gateway" "main" {
   })
 }
 
-# ── 서브넷 ──
+# 서브넷
 # cidrsubnet(vpc, 8, n): /16을 /24 단위로 잘라 n번째 대역을 배정.
 # Public은 1,2 / Private은 101,102 → 대역이 겹치지 않게 구분.
 
@@ -71,7 +71,7 @@ resource "aws_subnet" "private2" {
   })
 }
 
-# ── NAT Gateway (AZ별 이중화) ──
+# NAT Gateway (AZ별 이중화)
 # Private 서브넷의 아웃바운드 인터넷 경로. 한 AZ의 NAT가 죽어도 다른 AZ는 영향받지 않도록
 # AZ마다 하나씩 두어 고가용성을 확보한다. 각 NAT는 고정 공인 IP(EIP)가 필요.
 
@@ -114,7 +114,7 @@ resource "aws_nat_gateway" "main2" {
   })
 }
 
-# ── 라우팅 ──
+# 라우팅
 # Public 라우트 테이블: 0.0.0.0/0 → IGW. (두 Public 서브넷 각각에 연결)
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
@@ -190,7 +190,7 @@ resource "aws_route_table_association" "private2" {
   route_table_id = aws_route_table.private2.id
 }
 
-# ── VPC 엔드포인트 ─────────────────────────────────────────────────────────────
+# VPC 엔드포인트
 # Private 서브넷의 ECS 태스크가 AWS 서비스(S3/ECR/CloudWatch Logs/SQS)에 접근할 때
 # 인터넷(NAT)을 거치지 않고 AWS 내부 네트워크로 직접 통신하게 한다.
 # → 보안 강화 + NAT 데이터 처리 비용 절감.

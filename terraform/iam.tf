@@ -1,4 +1,4 @@
-# ── IAM 역할/정책 ─────────────────────────────────────────────────────────────
+# IAM 역할/정책
 # 최소 권한 원칙: API는 SQS 전송만, Worker는 SQS 수신·삭제 + S3 적재만 허용한다.
 # 실행 역할(execution role)과 태스크 역할(task role)을 분리한다:
 #   - 실행 역할: ECS 에이전트가 이미지 pull, 로그 전송 등에 사용(인프라용)
@@ -16,7 +16,7 @@ data "aws_iam_policy_document" "ecs_task_assume_role" {
   }
 }
 
-# ── 실행 역할(execution role) ──
+# 실행 역할(execution role)
 # 이미지 pull(ECR) + 컨테이너 로그 전송(CloudWatch)에 필요한 표준 권한.
 resource "aws_iam_role" "ecs_task_execution" {
   name               = "${var.project_name}-ecs-execution-role"
@@ -31,7 +31,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# ── 태스크 역할(task role): API / Worker 각각 분리 ──
+# 태스크 역할(task role): API / Worker 각각 분리
 resource "aws_iam_role" "api_task" {
   name               = "${var.project_name}-api-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json

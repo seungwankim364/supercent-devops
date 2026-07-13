@@ -1,4 +1,4 @@
-# ── ECS(Fargate) + ALB + CloudWatch Logs ─────────────────────────────────────
+# ECS(Fargate) + ALB + CloudWatch Logs
 # 퍼블릭 ALB가 트래픽을 받아 Private 서브넷의 API 태스크로 분산하고,
 # Worker 태스크는 ALB 없이 백그라운드에서 SQS를 소비한다.
 
@@ -24,7 +24,7 @@ resource "aws_ecs_cluster" "main" {
   tags = local.common_tags
 }
 
-# ── ALB ──
+# ALB
 # 인터넷에 공개된 Application Load Balancer. Public 서브넷 2곳(AZ 이중화)에 배치.
 resource "aws_lb" "api" {
   name               = substr("${var.project_name}-alb", 0, 32) # ALB 이름은 최대 32자
@@ -69,7 +69,7 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# ── API 태스크 정의 ──
+# API 태스크 정의
 # Fargate에서 실행되는 API 컨테이너의 청사진(이미지/CPU/메모리/환경변수/로그).
 resource "aws_ecs_task_definition" "api" {
   family                   = "${var.project_name}-api"
@@ -93,7 +93,6 @@ resource "aws_ecs_task_definition" "api" {
         }
       ]
       # 앱 코드가 읽는 환경변수. 로컬 docker-compose와 동일한 키를 사용.
-      # (SQS_ENDPOINT는 주입하지 않음 → SDK가 실제 AWS SQS 엔드포인트로 연결)
       environment = [
         { name = "PORT", value = tostring(var.container_port) },
         { name = "AWS_DEFAULT_REGION", value = var.aws_region },
@@ -113,8 +112,7 @@ resource "aws_ecs_task_definition" "api" {
   tags = local.common_tags
 }
 
-# ── Worker 태스크 정의 ──
-# 포트 매핑 없음(외부 노출 X). SQS를 소비해 S3로 적재하므로 큐 URL + S3 버킷 정보를 주입.
+# Worker 태스크 정의 
 resource "aws_ecs_task_definition" "worker" {
   family                   = "${var.project_name}-worker"
   requires_compatibilities = ["FARGATE"]
@@ -149,7 +147,7 @@ resource "aws_ecs_task_definition" "worker" {
   tags = local.common_tags
 }
 
-# ── API 서비스 ──
+# API 서비스
 # 태스크를 원하는 개수만큼 유지하고 ALB에 등록한다. Private 서브넷 배치(공인 IP 없음).
 resource "aws_ecs_service" "api" {
   name            = "${var.project_name}-api"
@@ -161,7 +159,7 @@ resource "aws_ecs_service" "api" {
   network_configuration {
     subnets          = [aws_subnet.private.id, aws_subnet.private2.id]
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = false # 아웃바운드는 NAT/VPC 엔드포인트를 통해서만
+    assign_public_ip = false # 아웃바운드는 VPC 엔드포인트를 통해서만
   }
 
   load_balancer {
@@ -175,7 +173,7 @@ resource "aws_ecs_service" "api" {
   tags = local.common_tags
 }
 
-# ── Worker 서비스 ──
+# Worker 서비스
 # ALB에 붙지 않고 큐만 소비. 그 외 구성은 API 서비스와 동일.
 resource "aws_ecs_service" "worker" {
   name            = "${var.project_name}-worker"
