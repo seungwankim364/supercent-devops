@@ -2,7 +2,7 @@
 
 수천만 글로벌 유저의 게임에서 발생하는 **초당 수만 건의 인게임 로그**를 유실 없이 받고 저장하는 파이프라인입니다. **Docker**를 사용하여 API, Worker서비스를 컨테이너화하였고, 그 뒤의 적재 인프라를 **큐(SQS) + DB(MongoDB)** 구조로 설계했습니다.
 
-(`docker compose up --build`)로 다른 환경에서도 동일하게 실행 가능
+(`docker compose up --build`)명령어 한줄로 다른 환경에서도 동일하게 실행 가능
 
 ---
 
@@ -13,8 +13,8 @@
 ### 1. SQS를 쓴 이유 — *트래픽 흡수 + 디커플링*
 
 - **SQS**를 쓴 첫번째 이유는 트래픽 흡수입니다. 초당 수만건의 로그 요청이 있을 시, **SQS가 없으면 요청들이 바로 DB로 가기 때문에** DB가 과부하가 올 가능성이 매우 높습니다. 또한, **DB 처리량보다, 요청 수가 더 많을 시에는 백로그**가 발생합니다. 그러면 API Latency (P99 / p95 ) 급증하게 되고 응답시간이 매우 느려집니다.
-- 반면, SQS가 DB 앞단에 있으면, API 에서 **SQS에 `PUT` Message를 넣고 200**을 응답합니다. SQS는 DB가 못하는 백로그를 흡수를 할 수 있으므로 수만개의 요청들을 대기열에 쌓을 수 있습니다. **Worker는 비동기 처리로 디커플링**하여, API 서비스와 Worker 서비스를 나누어서 Worker서비스는 API 요청시간에 포함이 되지 않습니다. API Latency 응답 속도와, DB 적재가 초과되면 데이터 유실이 발생하지만 SQS를 사용하면 데이터 유실, 트래픽 흡수 그리고 디커플링까지 해결을 해주기 때문에 SQS를 사용하였습니다.
-- SQS를 쓰는 이유는 **AWS 관리형 서비스**이기 때문입니다. 또한 이미 DLQ가 이미 SQS안에 있어서 데이터 유실 걱정이 없고 관리하기가 매우 편리합니다. 클라우드로 마이그레이션 할 시에는 **SQS Endpoint env코드만 제거해주면 localstack에서 AWS SQS**로 가기 때문입니다. 반면, Kafka같은 큐 + 저장소를 사용하는 것은 비효율적이라는 판단을 하였습니다. Kafka는 직접 클러스터를 생성을 하여서 직접 관리를 하기 때문에 이번 과제같이 간단한 로그를 큐에 적재하고 DB로 보내는 과정에서는 SQS가 맞다고 판단했습니다.
+- 반면, SQS가 DB 앞단에 있으면, API 에서 **SQS에 SendMessage를 넣고 200**을 응답합니다. SQS는 DB가 못하는 백로그를 흡수를 할 수 있으므로 수만개의 요청들을 대기열에 쌓을 수 있습니다. **Worker는 비동기 처리로 디커플링**하여, API 서비스와 Worker 서비스를 나누어서 Worker서비스는 API 요청시간에 포함이 되지 않습니다. API Latency 응답 속도와, DB 적재가 초과되면 데이터 유실이 발생하지만 SQS를 사용하면 데이터 유실, 트래픽 흡수 그리고 디커플링까지 해결을 해주기 때문에 SQS를 사용하였습니다.
+- SQS를 쓰는 이유는 **AWS 관리형 서비스**이기 때문입니다. 또한 DLQ 및 RedrivePolicy 연결을 하여 데이터 유실 걱정이 없고 관리하기가 매우 편리합니다. 클라우드로 마이그레이션 할 시에는 **SQS Endpoint env코드만 제거해주면 localstack에서 AWS SQS**로 가기 때문입니다. 반면, Kafka같은 큐 + 저장소를 사용하는 것은 비효율적이라는 판단을 하였습니다. Kafka는 직접 클러스터를 생성을 하여서 직접 관리를 하기 때문에 이번 과제같이 간단한 로그를 큐에 적재하고 DB로 보내는 과정에서는 SQS가 맞다고 판단했습니다.
 
 ### 2. 왜 SQS에서 멈추지 않고 MongoDB를 배치한 이유
 
@@ -38,7 +38,7 @@
 docker compose up --build
 ```
 
-- 위에 코드를 실행을 하면 `api` / `worker` 이미지가 빌드되고, `localstack` 다음에 바로 `queue-init`이 실행이 됩니다. 동시에 DLQ와 DerivedPolicy가 Script를 통해 실행이 됩니다.  `api` / `worker`은 의존성을 `queue-init`에 맞추었기 때문에, `queue-init` 실행 후 실행이 됩니다.
+- 위에 코드를 실행을 하면 `api` / `worker` 이미지가 빌드되고, `localstack` 다음에 바로 `queue-init`이 실행이 됩니다. 동시에 DLQ와 RedrivePolicy가 Script를 통해 실행이 됩니다.  `api` / `worker`은 의존성을 `queue-init`에 맞추었기 때문에, `queue-init` 실행 후 실행이 됩니다.
 
 ### 2) 종료
 
@@ -192,3 +192,18 @@ docker exec supercent-localstack awslocal sqs receive-message \
 - **로그 적재**: **SQS**를 활용하여 디커플링 및 비동기 처리 후 **S3**(raw logs)에 JSON log 적재. 그 다음 **Glue Data Catalog** 을 통해서 스키마로 변환 후 **Athena** 에서 로그 분석 기능
 - **보안/권한**: 최소 권한 IAM Task Role
 - **Monitoring**: CloudWatch Logs (API/Worker, 14일 보존)
+
+
+### Terraform
+
+### 필요한 Terraform 코드
+
+- **ECR**:: 이미지 Push를 할 시 이미지 취약점 스캔 후 ECR에 새로운 이미지 Push. 또한 동일한 이미지 Push할 수 있게 허용.  (CI/CD를 연동하면 Latest는 위험하므로 git commit # + sha로 변경해야됨)
+- **ECS**: ECS에  오토스케일링 정책이 별도로 있어서 ASG 생성을 안하고 ECS내에서 설정. CPU가 측정 % 넘어가면 새로운 태스크 추가 생성. 각 ECS API 및 Worker한테 role arn을 부여해주고 Task생성 후, ECS 서비스 생성. ALB를 생성해서 부하분산 기능 설계. (ALB, Listener, Target Group)
+- **IAM Role**: AWS Access Key가 아닌 STS를 사용하여 임시자격증명으로 Assume Role 부여. 최소 권한으로 각각 리소스가 필요한 권한만 부여
+- **locals**: Availability Zone을 하드 코딩안하고 Variable로 못넣으므로 local로 관리, tags도 마찬가지로 적용 됨
+- **log_storage**: logs조회가 가능한 리소스들을 모아놓았음. DLQ 격리, S3 (Public Access X) 그리고 S3 이름은 무조건 Unique해야되기 때문에 끝에 Account Number 추가함. Glue는 S3에 있는 Raw Data를 스키마를 정의 그리고 Athena는 Glue가 만든 스키마를 분석하고 다시 S3/athena-results에 저장. 
+- **Network**: VPC, Subnets, NAT, Routing Table, Routing Table과 서브넷 연결, AWS 리소스들이 NAT으로 나갔다가 다시 들어오지 않고, VPC Endpoint로 나가서 비용 절감. 
+- **Security Groups**: Public 보안그룹 (HTTP -> ALB -> ECS API로 전송), Private 보안그룹 (ALB -> S3 Endpoint와 VPC Interface Endpoint로 전송) 그리고 VPC Endpoint 보안그룹 (ECS -> VPC Endpoint)
+- **Variables**: 환경변수를 넣어서 하드코딩을 안하고 변수를 읽어오는 방식
+- **Versions**: Terraform Provider 및 배포대상 리젼 정의
