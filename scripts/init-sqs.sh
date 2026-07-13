@@ -1,11 +1,11 @@
 #!/bin/sh
-# Initialize SQS in LocalStack: a main queue + a Dead Letter Queue (DLQ)
-# wired together with a native redrive policy.
+# LocalStack에 SQS를 초기화한다: 메인 큐 + DLQ(Dead Letter Queue)를 만들고
+# 둘을 redrive 정책으로 연결한다.
 #
-# Behavior: when the worker fails to process a message, it does NOT delete it,
-# so the message becomes visible again after the visibility timeout. After
-# maxReceiveCount (5) failed receives, SQS automatically moves the message to
-# the DLQ. This mirrors the AWS setup in terraform/log_storage.tf.
+# 동작 방식: worker가 메시지 처리에 실패하면 삭제하지 않으므로, visibility timeout이
+# 지나면 메시지가 다시 보이게 된다. 이렇게 maxReceiveCount(5)회까지 수신에 실패하면
+# SQS가 해당 메시지를 자동으로 DLQ로 옮긴다(= 유실 없이 격리).
+# 이 구조는 terraform/log_storage.tf의 AWS 설정과 동일한 방식이다.
 
 set -e
 
@@ -14,11 +14,13 @@ MAIN_QUEUE="supercent-queue"
 DLQ_QUEUE="supercent-queue-dlq"
 MAX_RECEIVE_COUNT=5
 
+# 1) 먼저 DLQ를 생성한다. (메인 큐의 redrive 정책이 DLQ의 ARN을 참조하므로 DLQ가 먼저 있어야 함)
 echo "[init-sqs] Creating DLQ: ${DLQ_QUEUE}"
 DLQ_URL=$(aws --endpoint-url="${ENDPOINT}" sqs create-queue \
   --queue-name "${DLQ_QUEUE}" \
   --query 'QueueUrl' --output text)
 
+# redrive 정책에 넣을 DLQ의 ARN을 조회한다.
 DLQ_ARN=$(aws --endpoint-url="${ENDPOINT}" sqs get-queue-attributes \
   --queue-url "${DLQ_URL}" \
   --attribute-names QueueArn \
@@ -26,14 +28,16 @@ DLQ_ARN=$(aws --endpoint-url="${ENDPOINT}" sqs get-queue-attributes \
 
 echo "[init-sqs] DLQ ARN: ${DLQ_ARN}"
 
+# 2) 메인 큐를 생성한다.
 echo "[init-sqs] Creating main queue: ${MAIN_QUEUE}"
 MAIN_URL=$(aws --endpoint-url="${ENDPOINT}" sqs create-queue \
   --queue-name "${MAIN_QUEUE}" \
   --query 'QueueUrl' --output text)
 
+# 3) 메인 큐에 redrive 정책을 붙여 DLQ와 연결한다(maxReceiveCount 초과 시 DLQ로 이동).
 echo "[init-sqs] Attaching redrive policy (maxReceiveCount=${MAX_RECEIVE_COUNT})"
-# RedrivePolicy's value is itself a JSON string, so pass --attributes as a
-# JSON file (file://) to avoid the CLI shorthand parser choking on the commas.
+# RedrivePolicy 값 자체가 JSON 문자열(중첩 JSON)이라, CLI 축약 파서가 콤마에서 막힌다.
+# 그래서 --attributes를 JSON 파일(file://)로 전달한다.
 printf '{"RedrivePolicy":"{\\"deadLetterTargetArn\\":\\"%s\\",\\"maxReceiveCount\\":\\"%s\\"}"}' \
   "${DLQ_ARN}" "${MAX_RECEIVE_COUNT}" > /tmp/redrive.json
 
