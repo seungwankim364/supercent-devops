@@ -9,28 +9,6 @@
 ## 아키텍처 (로컬 / docker-compose)
 
 ```
-                                  ┌───────────────────────────────────────────┐
-                                  │        docker-compose 가상 네트워크          │
-                                  │                                            │
-  게임 클라이언트                     │   ┌─────────┐   send    ┌───────────────┐  │
-  POST /api/v1/logs  ───► :3000 ──┼──►│  API    │──────────►│  SQS (main)   │  │
-  (JSON 로그)                      │   │ Express │           │ supercent-    │  │
-                                  │   └─────────┘           │  queue        │  │
-                                  │                         └───────┬───────┘  │
-                                  │                          poll   │          │
-                                  │                     ┌───────────▼───────┐  │
-                                  │        store        │      Worker       │  │
-                                  │   ┌─────────────┐◄──┤  (SQS consumer)   │  │
-                                  │   │  MongoDB    │   └───────────┬───────┘  │
-                                  │   │ (volume)    │        5회 실패 │          │
-                                  │   └─────────────┘     ┌─────────▼───────┐  │
-                                  │                       │  SQS (DLQ)      │  │
-                                  │                       │ supercent-      │  │
-                                  │                       │  queue-dlq      │  │
-                                  │                       └─────────────────┘  │
-                                  └───────────────────────────────────────────-┘
-```
-
 | 컴포넌트 | 역할 | 이미지 |
 |---|---|---|
 | **api** | `POST /api/v1/logs` 수신 → 검증 → SQS 전송 (호스트 `:3000` 개방) | Node.js / Express |
@@ -45,26 +23,16 @@
 
 로그 적재 방식으로 **큐(Queue, B안) + DB(C안) 조합**을 선택했습니다. 인프라 엔지니어 관점의 이유는 다음과 같습니다.
 
-### 1. 왜 큐(SQS)를 앞단에 두는가 — *트래픽 흡수 + 디커플링*
-- **스파이크 흡수(버퍼링)**: "초당 수만 건"의 트래픽은 항상 균일하지 않습니다. API는 로그를 받아 **큐에 넣기만 하고 즉시 200을 반환**하므로, 적재 처리 지연이 API 응답 지연으로 전이되지 않습니다. 트래픽이 폭증해도 API가 죽지 않고 큐가 완충 역할을 합니다.
-- **수집과 처리의 분리**: 수집(API)과 적재(Worker)를 분리하면 각각 독립적으로 배포·확장할 수 있습니다.
-- **수평 확장**: 소비자(Worker)를 `docker compose up --scale worker=N`으로 늘리면 처리량이 선형으로 증가합니다.
+### 1. SQS를 쓴 이유 — *트래픽 흡수 + 디커플링*
+- SQS를 쓴 첫번째 이유는 트래픽 흡수입니다. 초당 수만건의 로그 요청이 있을 시, SQS가 없으면 요청들이 바로 DB로 가기 때문에 DB가 과부하가 올 가능성이 매우 높습니다. 또한, API 요청 수 보다, DB 처리 수가 더 많을 시에는 백로그가 발생합니다. 그러면 API Latency (P99 / p95 ) 급증하게 되고 응답시간이 매우 느려집니다. 
+- 반면, SQS가 DB 앞단에 있으면, API 에서 SQS에 'PUT' Message를 넣고 200을 응답합니다. SQS는 DB가 못하는 백로그를 흡수를 할 수 있으므로 수만개의 요청들을 대기열에 쌓을 수 있습니다. Worker는 비동기 처리로 디커플링하여, API ECS와 API Worker를 나누고 API 요청시간에 포함이 되지 않습니다. 비록 최종 클라이언트가 받는 응답속도는 비슷하겠지만, API Latency 응답 속도와, DB 적재가 초과되면 데이터 유실이 발생하므로 SQS로 데이터 유실, 트래픽 흡수 그리고 디커플링까지 책임을 주었습니다.
+- SQS를 쓰는 이유는 AWS 관리형 서비스이기 때문입니다. 또한 이미 DLQ가 이미 SQS안에 있어서 데이터 유실 걱정이 없고 관리하기가 매우 편리합니다. 또한 클라우드로 마이그레이션 할 시에는 SQS Endpoint env코드만 제거해주면 localstack에서 AWS SQS로 가기 때문입니다. 반면, Kafka같은 큐 + 저장소를 사용하는 것은 비효율적이라는 판단을 하였습니다. Kafka는 직접 클러스터를 생성을 하여서 직접 관리를 하기 때문에 이러한 로그를 큐에 적재하고 DB로 보내는 과정에서는 SQS가 맞다고 판단했습니다. 
 
-### 2. 왜 DB(MongoDB)를 최종 적재소로 두는가 — *비정형 로그에 적합*
-- 인게임 로그는 이벤트(유저 행동, 재화 소비, 시스템 에러)마다 필드가 제각각인 **비정형 JSON**입니다. 스키마를 강제하지 않는 **document store**가 구조 변경 없이 그대로 적재하기에 적합합니다.
-- 컨테이너 하나로 즉시 기동되고, `find()` 한 번으로 적재 결과를 바로 확인할 수 있어 **검증에도 유리**합니다.
+### 2. 왜 SQS에서 멈추지 않고 MongoDB를 배치한 이유
+- 큐는 저장소가 아니라 디커플링을 통해 로그 메세지 비동기 처리를 도와주는 도구입니다. 특정 시간이 지나면 로그는 사라지므로, 장기간 보관에는 큐만 배치하는 것은 절대 안전하지 않다고 판단하였습니다. 그리하여 DB를 끝에 두고 데이터 유실을 없애고, 데이터 영속성도 유지를 하였습니다. 
+- MongoDB를 쓴 이유는 Document Type DB였기 때문입니다. JSON 형태로 저장하기에는 MongoDB가 최적화라 생각하여 MongoDB를 썼습니다.
 
-### 3. 왜 파일(A안)이 아닌가
-- 단일 파일 적재는 동시성 제어, 다중 인스턴스 간 파일 공유, 대용량 조회에서 한계가 있습니다. "대량의 글로벌 트래픽 + 분산 처리" 가정에는 큐 + DB 조합이 근본적으로 유리합니다.
-
-### 4. 유실 없이 적재(No Data Loss) — 이 설계의 핵심
-로그 파이프라인에서 가장 중요한 **유실 방지**를 다음 3중 장치로 보장합니다.
-
-1. **API는 SQS 전송이 성공해야 200을 반환** — 큐에 안전히 들어간 뒤에만 성공 응답하므로, 실패 시 클라이언트가 재전송할 수 있습니다.
-2. **Worker는 적재(insert) 성공 후에만 메시지 삭제** — at-least-once 처리. 워커가 처리 도중 죽어도 메시지는 삭제되지 않아 visibility timeout 후 **자동 재처리**됩니다.
-3. **DLQ(Dead Letter Queue) + native redrive** — 계속 실패하는 poison 메시지는 5회 재시도 후 SQS가 자동으로 DLQ로 격리합니다. 덕분에 문제 메시지 하나가 큐 전체를 막거나 무한 재시도되는 일이 없고, **실패한 메시지도 버려지지 않고** 보관됩니다.
-
-### 5. 로컬(MongoDB) vs AWS(S3) — 환경별 목적에 맞춘 선택
+### 3. 로컬(MongoDB) vs AWS(S3) — 환경별 목적에 맞춘 선택
 - **로컬**은 빠른 개발·검증에 적합한 **MongoDB(document DB)** 로 적재합니다.
 - **AWS 설계**(선택 과제)에서는 대규모 수집·보관·분석에 최적화된 대표 로그 스토리지 **S3**를 적재소로 사용합니다. (아래 [AWS 인프라 설계](#선택-과제-aws-인프라-설계--terraform) 참조)
 
@@ -87,12 +55,14 @@ docker compose up --build
 - 기동 상태 확인: `docker compose ps` (localstack/mongodb/api가 `healthy`가 되면 준비 완료)
 
 ### 2) 종료
+
 ```bash
 docker compose down          # 컨테이너 정리 (볼륨 유지)
 docker compose down -v       # 볼륨까지 완전 삭제
 ```
 
 ### 3) 포트 구성
+
 | 서비스 | 호스트 포트 | 용도 |
 |---|---|---|
 | api | `3000` | **로그 수신 엔드포인트** (외부 개방) |
@@ -108,6 +78,7 @@ docker compose down -v       # 볼륨까지 완전 삭제
 ### ✅ 1. 정상 로그 적재 (API → SQS → Worker → MongoDB)
 
 **① 로그 전송 (curl):**
+
 ```bash
 curl -X POST http://localhost:3000/api/v1/logs \
   -H "Content-Type: application/json" \
@@ -115,24 +86,29 @@ curl -X POST http://localhost:3000/api/v1/logs \
 ```
 
 **응답 (200 OK):**
+
 ```json
 {"message":"Log data sent to SQS successfully.","messageId":"44823cb7-c202-4bbd-8863-84c7ebc26811"}
 ```
 
 **② Worker 처리 로그:**
+
 ```bash
 docker compose logs worker | tail
 ```
+
 ```
 Connected to MongoDB: supercent.logs
 Message processed: 44823cb7-c202-4bbd-8863-84c7ebc26811
 ```
 
 **③ MongoDB 적재 확인:**
+
 ```bash
 docker exec supercent-mongodb mongosh --quiet supercent \
   --eval 'db.logs.find().sort({storedAt:-1}).limit(1)'
 ```
+
 ```js
 [
   {
@@ -144,6 +120,7 @@ docker exec supercent-mongodb mongosh --quiet supercent \
   }
 ]
 ```
+
 → 전송한 로그가 큐를 거쳐 DB까지 **유실 없이 도달**함을 확인.
 
 ### ✅ 2. 유실 방지(DLQ) 검증
@@ -151,6 +128,7 @@ docker exec supercent-mongodb mongosh --quiet supercent \
 처리에 계속 실패하는 메시지가 버려지지 않고 DLQ로 격리되는지 확인합니다.
 
 **① 깨진(poison) 메시지를 큐에 직접 투입:**
+
 ```bash
 docker exec supercent-localstack awslocal sqs send-message \
   --queue-url http://localhost:4566/000000000000/supercent-queue \
@@ -158,6 +136,7 @@ docker exec supercent-localstack awslocal sqs send-message \
 ```
 
 **② 5회 재시도 후 DLQ 적재 확인** (VisibilityTimeout 30s 기준 약 2~3분 소요):
+
 ```bash
 # DLQ에 쌓인 메시지 개수 확인
 docker exec supercent-localstack awslocal sqs get-queue-attributes \
@@ -171,15 +150,18 @@ docker exec supercent-localstack awslocal sqs receive-message \
 ```
 
 **결과:**
+
 ```
 - Worker 로그: "Failed to process message: SyntaxError ..." 5회 반복 (삭제하지 않음)
 - 메인 큐 ApproximateNumberOfMessages: 0   (메시지가 빠져나감)
 - DLQ ApproximateNumberOfMessages: 1        (격리 성공)
 - DLQ 메시지 ApproximateReceiveCount: 6      (maxReceiveCount=5 초과 → 자동 이동)
 ```
+
 → 실패한 메시지도 **유실되지 않고** DLQ에 안전하게 보관됨을 확인.
 
 ### (참고) 큐 상태 조회
+
 ```bash
 docker exec supercent-localstack awslocal sqs list-queues
 docker exec supercent-localstack awslocal sqs get-queue-attributes \
@@ -190,6 +172,7 @@ docker exec supercent-localstack awslocal sqs get-queue-attributes \
 ---
 
 ## 프로젝트 구조
+
 ```
 .
 ├── api/                    # 로그 수집 API 서버 (Express)
@@ -228,20 +211,12 @@ docker exec supercent-localstack awslocal sqs get-queue-attributes \
 > 실제 프로비저닝 없이 **설계안 + IaC 코드**만 제출합니다. (`terraform/` 참조)
 
 ### 아키텍처 개요
-```
-Route53 → ALB (Public Subnet, Multi-AZ)
-            │
-            ▼
-        ECS API (Fargate, Private Subnet)  ── send ──►  SQS ──► ECS Worker ──► S3 (raw logs)
-                                                          │                        │
-                                                          ▼                        ▼
-                                                         DLQ                 Glue Catalog → Athena
- CI/CD: GitHub → ECR → ECS 배포
-```
+
 
 ![AWS Architecture](./documents/aws-architecture.png)
 
 ### 포함 요소
+
 - **네트워크**: VPC(`10.20.0.0/16`), **2개 AZ**에 걸친 Public/Private Subnet, IGW, **AZ별 NAT Gateway**(고가용성), 라우팅 테이블
 - **부하 분산**: 퍼블릭 **ALB** → Private Subnet의 ECS API 태스크로 분산 (`/healthz` 헬스체크)
 - **컨테이너 서비스**: **ECS Fargate** — API 서비스(오토스케일 2~10) + Worker 서비스(오토스케일 2~20), **ECR** 이미지 저장소
@@ -250,10 +225,12 @@ Route53 → ALB (Public Subnet, Multi-AZ)
 - **관측성**: CloudWatch Logs (API/Worker, 14일 보존)
 
 ### 로컬 ↔ AWS 일관성
+
 - 로컬의 **SQS + DLQ redrive** 구조가 AWS([`terraform/log_storage.tf`](terraform/log_storage.tf))와 **동일한 방식**으로 설계되어, 로컬에서 검증한 유실 방지 로직이 운영 설계에도 그대로 반영됩니다.
 - 적재소는 환경 목적에 맞게 분리: **로컬=MongoDB**(빠른 개발·검증), **AWS=S3**(대규모 보관·Athena 분석).
 
 ### Terraform 구성
+
 | 파일 | 내용 |
 |---|---|
 | `network.tf` | VPC, Subnet, IGW, NAT, 라우팅 |
