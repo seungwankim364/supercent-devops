@@ -36,7 +36,7 @@
 ### 3. 로컬(MongoDB) vs AWS(S3) — 환경별 목적에 맞춘 선택
 
 - **로컬**은 빠른 개발·검증에 적합한 **MongoDB(Document Type DB)** 로 적재합니다.
-- **AWS 아키텍처 설계**(선택 과제)에서는 대규모 수집·보관·분석에 최적화된 대표 로그 스토리지 **S3**를 적재소로 사용합니다. (아래 [AWS 인프라 설계](#선택-과제-aws-인프라-설계--terraform) 참조)
+- **AWS 아키텍처 설계**(선택 과제)에서는 MongoDB보다는 로그 적재에 최적화된 대표 로그 스토리지 **S3**를 적재소로 사용합니다. 
 
 ---
 
@@ -69,7 +69,7 @@ docker compose down -v       # 볼륨까지 완전 삭제
 
 아래는 실제로 기동 후 로그를 전송하고 인프라에 도달했음을 확인한 과정입니다.
 
-### ✅ 1. 정상 로그 적재 (API → SQS → Worker → MongoDB)
+### 1. 정상 로그 적재
 
 **1. 로그 전송 (curl):**
 
@@ -226,18 +226,13 @@ docker exec supercent-localstack awslocal sqs receive-message \
 
 ### 포함 요소
 
-- **네트워크**: VPC(`10.20.0.0/16`), **2개 AZ**에 걸친 Public/Private Subnet, IGW, **AZ별 NAT Gateway**(고가용성), 라우팅 테이블
+- **네트워크**: VPC(`10.20.0.0/16`), **Multi AZ**를 활용한 고가용성, IGW, **AZ별 NAT Gateway**
 - **VPC Endpoint**: SQS, S3 Endpoint, ECR API, ECR Docker VPC Endpoint를 열어서 ECS가 Image Pull를 할 때, NAT을 통해 외부로 안가고 내부에서 AWS 서비스끼리 통신
-- **부하 분산**: 퍼블릭 **ALB** → Private Subnet의 ECS API 태스크로 분산 (`/healthz` 헬스체크)
-- **컨테이너 서비스**: **ECS Fargate** — API 서비스(오토스케일 2~10) + Worker 서비스(오토스케일 2~20), **ECR** 이미지 저장소
-- **로그 적재(관리형)**: **SQS**(+ DLQ redrive, `maxReceiveCount=5`) → **S3**(raw logs) → **Glue Data Catalog** → **Athena**(SQL 조회)
-- **보안/권한**: 최소 권한 IAM Task Role(API: SQS 전송 / Worker: SQS 수신·삭제 + S3 적재), S3 퍼블릭 액세스 차단, ALB→ECS Security Group 제한
-- **관측성**: CloudWatch Logs (API/Worker, 14일 보존)
-
-### 로컬 ↔ AWS 일관성
-
-- 로컬의 **SQS + DLQ redrive** 구조가 AWS([`terraform/log_storage.tf`](terraform/log_storage.tf))와 **동일한 방식**으로 설계되어, 로컬에서 검증한 유실 방지 로직이 운영 설계에도 그대로 반영됩니다.
-- 적재소는 환경 목적에 맞게 분리: **로컬=MongoDB**(빠른 개발·검증), **AWS=S3**(대규모 보관·Athena 분석).
+- **ALB을 통한 부하분산**: 퍼블릭 **ALB** 에서 Multi AZ Private Subnet의 ECS API 태스크로 분산
+- **ECR, ECS (Docker Registry & Service)**: **ECS Fargate** API 서비스(오토스케일 2~10) + Worker 서비스(오토스케일 2~20), **ECR** 이미지 저장소
+- **로그 적재**: **SQS**를 활용하여 다커플링 및 비동기처리 그리고 **S3**(raw logs)에 JSON log 적재. 그 다음 **Glue Data Catalog** 을 통해서 스키마로 변환 후 **Athena** 에서 로그 분석 기능
+- **보안/권한**: 최소 권한 IAM Task Role
+- **Monitoring**: CloudWatch Logs (API/Worker, 14일 보존)
 
 ### Terraform 구성
 
