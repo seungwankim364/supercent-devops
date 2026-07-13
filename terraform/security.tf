@@ -1,15 +1,10 @@
-# 보안 그룹
-# 3계층으로 트래픽을 최소 권한 원칙에 맞게 제한한다:
-#   인터넷 → ALB → ECS 태스크 → (VPC 엔드포인트 / S3)
-# 각 계층은 바로 앞 계층에서 오는 트래픽만 허용한다.
-
 # ALB용 SG: 인터넷에서 오는 HTTP(80)만 허용하고, ECS 태스크로만 나간다.
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-alb-sg"
   description = "Allow public HTTP traffic to the API ALB"
   vpc_id      = aws_vpc.main.id
 
-  # 인바운드: 인터넷 어디서든 80 포트 허용(공개 로그 수집 엔드포인트).
+  # 인바운드: 인터넷 어디서든 80 포트 허용
   ingress {
     description = "HTTP from internet"
     from_port   = 80
@@ -54,10 +49,7 @@ resource "aws_security_group" "ecs" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-
-    security_groups = [
-      aws_security_group.vpc_endpoint.id
-    ]
+    security_groups = [aws_security_group.vpc_endpoint.id]
   }
 
   # 아웃바운드 2: S3 게이트웨이 엔드포인트로 향하는 HTTPS(prefix list로 S3 대역만 허용).
@@ -92,9 +84,7 @@ resource "aws_security_group" "vpc_endpoint" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    security_groups = [
-      aws_security_group.ecs.id
-    ]
+    security_groups = [aws_security_group.ecs.id]
   }
 
   egress {

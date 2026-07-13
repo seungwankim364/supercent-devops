@@ -27,7 +27,7 @@ resource "aws_ecs_cluster" "main" {
 # ALB
 # 인터넷에 공개된 Application Load Balancer. Public 서브넷 2곳(AZ 이중화)에 배치.
 resource "aws_lb" "api" {
-  name               = substr("${var.project_name}-alb", 0, 32) # ALB 이름은 최대 32자
+  name               = "${var.project_name}-alb"
   load_balancer_type = "application"
   internal           = false # 퍼블릭
   security_groups    = [aws_security_group.alb.id]
@@ -39,7 +39,7 @@ resource "aws_lb" "api" {
 # 타깃 그룹: ALB가 트래픽을 보낼 대상. Fargate는 IP 기반(target_type=ip).
 # /healthz가 200을 반환하면 healthy로 판정(연속 2회 성공 시 투입, 3회 실패 시 제외).
 resource "aws_lb_target_group" "api" {
-  name        = substr("${var.project_name}-api-tg", 0, 32)
+  name        = "${var.project_name}-api-tg" 
   port        = var.container_port
   protocol    = "HTTP"
   target_type = "ip"
