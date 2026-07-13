@@ -8,7 +8,6 @@
 
 ## 아키텍처 (로컬 / docker-compose)
 
-```
 | 컴포넌트 | 역할 | 이미지 |
 |---|---|---|
 | **api** | `POST /api/v1/logs` 수신 → 검증 → SQS 전송 (호스트 `:3000` 개방) | Node.js / Express |
