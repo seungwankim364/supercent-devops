@@ -167,3 +167,99 @@ resource "aws_route_table_association" "private2" {
   subnet_id      = aws_subnet.private2.id
   route_table_id = aws_route_table.private2.id
 }
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id = aws_vpc.main.id
+  service_name = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+
+  route_table_ids = [
+    aws_route_table_association.private.route_table_id,
+    aws_route_table_association.private2.route_table_id
+  ]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-s3-endpoint"
+  })
+}
+
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id = aws_vpc.main.id
+  service_name = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = [
+    aws_subnet.private.id,
+    aws_subnet.private2.id
+  ]
+ 
+  security_group_ids = [
+    aws_security_group.vpc_endpoint.id
+  ]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-ecr-api-endpoint"
+  })
+
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id = aws_vpc.main.id
+  service_name = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = [
+    aws_subnet.private.id,
+    aws_subnet.private2.id
+  ]
+ 
+  security_group_ids = [
+    aws_security_group.vpc_endpoint.id
+  ]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-ecr-dkr-endpoint"
+  })
+}
+
+resource "aws_vpc_endpoint" "logs" {
+  vpc_id = aws_vpc.main.id
+  service_name = "com.amazonaws.${var.aws_region}.logs"
+  vpc_endpoint_type = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = [
+    aws_subnet.private.id,
+    aws_subnet.private2.id
+  ]
+ 
+  security_group_ids = [
+    aws_security_group.vpc_endpoint.id
+  ]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-logs-endpoint"
+  })
+}
+
+resource "aws_vpc_endpoint" "sqs" {
+  vpc_id = aws_vpc.main.id
+  service_name = "com.amazonaws.${var.aws_region}.sqs"
+  vpc_endpoint_type = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = [
+    aws_subnet.private.id,
+    aws_subnet.private2.id
+  ]
+ 
+  security_group_ids = [
+    aws_security_group.vpc_endpoint.id
+  ]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-sqs-endpoint"
+  })
+}
