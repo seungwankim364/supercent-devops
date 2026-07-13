@@ -177,28 +177,6 @@ docker exec supercent-localstack awslocal sqs receive-message \
 ```
 ---
 
-## 프로젝트 구조
-
-```
-.
-├── api/                    # 로그 수집 API 서버 (Express)
-│   ├── routes/logs.js      #   POST /api/v1/logs 핸들러 (검증 + SQS 전송)
-│   ├── services/sqs.js     #   SQS SendMessage
-│   ├── server.js           #   /healthz, JSON 파싱, 에러 핸들러
-│   └── Dockerfile
-├── worker/                 # SQS 소비 → MongoDB 적재 워커
-│   ├── services/sqs.js     #   ReceiveMessage / DeleteMessage
-│   ├── db/mongo.js         #   MongoDB insert
-│   ├── worker.js           #   폴링 루프 (실패 시 미삭제 → 재처리/DLQ)
-│   └── Dockerfile
-├── scripts/init-sqs.sh     # 큐 + DLQ + redrive policy 초기화
-├── docker-compose.yml      # 전체 인프라 정의
-├── terraform/              # (선택 과제) AWS IaC
-└── README.md
-```
-
----
-
 ## 선택 과제: AWS 인프라 설계 + Terraform
 
 ### 아키텍처 개요
@@ -214,15 +192,3 @@ docker exec supercent-localstack awslocal sqs receive-message \
 - **로그 적재**: **SQS**를 활용하여 디커플링 및 비동기 처리 후 **S3**(raw logs)에 JSON log 적재. 그 다음 **Glue Data Catalog** 을 통해서 스키마로 변환 후 **Athena** 에서 로그 분석 기능
 - **보안/권한**: 최소 권한 IAM Task Role
 - **Monitoring**: CloudWatch Logs (API/Worker, 14일 보존)
-
-### Terraform 구성
-
-| 파일 | 내용 |
-|---|---|
-| `network.tf` | VPC, Subnet, IGW, NAT, 라우팅, VPC Endpoint |
-| `ecs.tf` | ALB, ECS 클러스터/서비스/태스크 정의 |
-| `ecs_autoscaling.tf` | API/Worker 오토스케일링 |
-| `security.tf` | 보안 그룹 |
-| `iam.tf` | Task 실행/권한 Role |
-| `log_storage.tf` | SQS, DLQ, S3, Glue, Athena |
-| `ecr.tf` | 컨테이너 이미지 저장소 |
