@@ -23,15 +23,18 @@
 로그 적재 방식으로 **큐(Queue, B안) + DB(C안) 조합**을 선택했습니다. 인프라 엔지니어 관점의 이유는 다음과 같습니다.
 
 ### 1. SQS를 쓴 이유 — *트래픽 흡수 + 디커플링*
-- SQS를 쓴 첫번째 이유는 트래픽 흡수입니다. 초당 수만건의 로그 요청이 있을 시, SQS가 없으면 요청들이 바로 DB로 가기 때문에 DB가 과부하가 올 가능성이 매우 높습니다. 또한, API 요청 수 보다, DB 처리 수가 더 많을 시에는 백로그가 발생합니다. 그러면 API Latency (P99 / p95 ) 급증하게 되고 응답시간이 매우 느려집니다. 
+
+- SQS를 쓴 첫번째 이유는 트래픽 흡수입니다. 초당 수만건의 로그 요청이 있을 시, SQS가 없으면 요청들이 바로 DB로 가기 때문에 DB가 과부하가 올 가능성이 매우 높습니다. 또한, API 요청 수 보다, DB 처리 수가 더 많을 시에는 백로그가 발생합니다. 그러면 API Latency (P99 / p95 ) 급증하게 되고 응답시간이 매우 느려집니다.
 - 반면, SQS가 DB 앞단에 있으면, API 에서 SQS에 'PUT' Message를 넣고 200을 응답합니다. SQS는 DB가 못하는 백로그를 흡수를 할 수 있으므로 수만개의 요청들을 대기열에 쌓을 수 있습니다. Worker는 비동기 처리로 디커플링하여, API ECS와 API Worker를 나누고 API 요청시간에 포함이 되지 않습니다. 비록 최종 클라이언트가 받는 응답속도는 비슷하겠지만, API Latency 응답 속도와, DB 적재가 초과되면 데이터 유실이 발생하므로 SQS로 데이터 유실, 트래픽 흡수 그리고 디커플링까지 책임을 주었습니다.
-- SQS를 쓰는 이유는 AWS 관리형 서비스이기 때문입니다. 또한 이미 DLQ가 이미 SQS안에 있어서 데이터 유실 걱정이 없고 관리하기가 매우 편리합니다. 또한 클라우드로 마이그레이션 할 시에는 SQS Endpoint env코드만 제거해주면 localstack에서 AWS SQS로 가기 때문입니다. 반면, Kafka같은 큐 + 저장소를 사용하는 것은 비효율적이라는 판단을 하였습니다. Kafka는 직접 클러스터를 생성을 하여서 직접 관리를 하기 때문에 이러한 로그를 큐에 적재하고 DB로 보내는 과정에서는 SQS가 맞다고 판단했습니다. 
+- SQS를 쓰는 이유는 AWS 관리형 서비스이기 때문입니다. 또한 이미 DLQ가 이미 SQS안에 있어서 데이터 유실 걱정이 없고 관리하기가 매우 편리합니다. 또한 클라우드로 마이그레이션 할 시에는 SQS Endpoint env코드만 제거해주면 localstack에서 AWS SQS로 가기 때문입니다. 반면, Kafka같은 큐 + 저장소를 사용하는 것은 비효율적이라는 판단을 하였습니다. Kafka는 직접 클러스터를 생성을 하여서 직접 관리를 하기 때문에 이러한 로그를 큐에 적재하고 DB로 보내는 과정에서는 SQS가 맞다고 판단했습니다.
 
 ### 2. 왜 SQS에서 멈추지 않고 MongoDB를 배치한 이유
-- 큐는 저장소가 아니라 디커플링을 통해 로그 메세지 비동기 처리를 도와주는 도구입니다. 특정 시간이 지나면 로그는 사라지므로, 장기간 보관에는 큐만 배치하는 것은 절대 안전하지 않다고 판단하였습니다. 그리하여 DB를 끝에 두고 데이터 유실을 없애고, 데이터 영속성도 유지를 하였습니다. 
+
+- 큐는 저장소가 아니라 디커플링을 통해 로그 메세지 비동기 처리를 도와주는 도구입니다. 특정 시간이 지나면 로그는 사라지므로, 장기간 보관에는 큐만 배치하는 것은 절대 안전하지 않다고 판단하였습니다. 그리하여 DB를 끝에 두고 데이터 유실을 없애고, 데이터 영속성도 유지를 하였습니다.
 - MongoDB를 쓴 이유는 Document Type DB였기 때문입니다. JSON 형태로 저장하기에는 MongoDB가 최적화라 생각하여 MongoDB를 썼습니다.
 
 ### 3. 로컬(MongoDB) vs AWS(S3) — 환경별 목적에 맞춘 선택
+
 - **로컬**은 빠른 개발·검증에 적합한 **MongoDB(document DB)** 로 적재합니다.
 - **AWS 설계**(선택 과제)에서는 대규모 수집·보관·분석에 최적화된 대표 로그 스토리지 **S3**를 적재소로 사용합니다. (아래 [AWS 인프라 설계](#선택-과제-aws-인프라-설계--terraform) 참조)
 
@@ -40,9 +43,11 @@
 ## 실행 가이드
 
 ### 사전 요구 사항
+
 - Docker / Docker Compose (v2)
 
 ### 1) 전체 환경 기동
+
 프로젝트 루트에서 아래 한 줄이면 됩니다.
 
 ```bash
@@ -134,6 +139,14 @@ docker exec supercent-localstack awslocal sqs send-message \
   --message-body 'this-is-not-json{'
 ```
 
+```
+worker-1              | Failed to process message: SyntaxError: Unexpected token 'h', "this-is-not-json{" is not valid JSON
+worker-1              |     at JSON.parse (<anonymous>)
+worker-1              |     at processMessage (/app/worker.js:9:23)
+worker-1              |     at startWorker (/app/worker.js:35:19)
+worker-1              |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+```
+
 **② 5회 재시도 후 DLQ 적재 확인** (VisibilityTimeout 30s 기준 약 2~3분 소요):
 
 ```bash
@@ -142,10 +155,43 @@ docker exec supercent-localstack awslocal sqs get-queue-attributes \
   --queue-url http://localhost:4566/000000000000/supercent-queue-dlq \
   --attribute-names ApproximateNumberOfMessages
 
+```
+
+```
+docker exec supercent-localstack awslocal sqs get-queue-attributes \
+  --queue-url <http://localhost:4566/000000000000/supercent-queue-dlq> \
+  --attribute-names ApproximateNumberOfMessages
+{
+    "Attributes": {
+        "ApproximateNumberOfMessages": "5"
+    }
+}
+```
+
+```
+
 # DLQ 메시지 내용 + 수신 횟수(ApproximateReceiveCount) 확인
 docker exec supercent-localstack awslocal sqs receive-message \
   --queue-url http://localhost:4566/000000000000/supercent-queue-dlq \
   --attribute-names ApproximateReceiveCount --visibility-timeout 0
+```
+
+```
+{
+    "Messages": [
+        {
+            "MessageId": "9842af67-1fee-4ef4-afe1-783e2e9b1734",
+            "ReceiptHandle": "ZDJhZGQ1N2ItZWYzNC00OWMxLWFjMGEtYzk1ZjM2MGQ1MzQ1IGFybjphd3M6c3FzOmFwLW5vcnRoZWFzdC0yOjAwMDAwMDAwMDAwMDpzdXBlcmNlbnQtcXVldWUtZGxxIDk4NDJhZjY3LTFmZWUtNGVmNC1hZmUxLTc4M2UyZTliMTczNCAxNzgzOTEwMTMwLjM0MzQzMzQ=",
+            "MD5OfBody": "9543188a9f7b491705c9c6be37f394c7",
+            "Body": "this-is-not-json{",
+            "Attributes": {
+                "ApproximateReceiveCount": "6"
+            }
+            }
+        }
+    ]
+}
+
 ```
 
 **결과:**
@@ -153,7 +199,7 @@ docker exec supercent-localstack awslocal sqs receive-message \
 ```
 - Worker 로그: "Failed to process message: SyntaxError ..." 5회 반복 (삭제하지 않음)
 - 메인 큐 ApproximateNumberOfMessages: 0   (메시지가 빠져나감)
-- DLQ ApproximateNumberOfMessages: 1        (격리 성공)
+- DLQ ApproximateNumberOfMessages: 5        (격리 성공)
 - DLQ 메시지 ApproximateReceiveCount: 6      (maxReceiveCount=5 초과 → 자동 이동)
 ```
 
@@ -210,7 +256,6 @@ docker exec supercent-localstack awslocal sqs get-queue-attributes \
 > 실제 프로비저닝 없이 **설계안 + IaC 코드**만 제출합니다. (`terraform/` 참조)
 
 ### 아키텍처 개요
-
 
 ![AWS Architecture](./documents/aws-architecture.png)
 
