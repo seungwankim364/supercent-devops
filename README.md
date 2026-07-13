@@ -6,18 +6,6 @@
 
 ---
 
-## 아키텍처 (로컬 / docker-compose)
-
-| 컴포넌트 | 역할 | 이미지 |
-|---|---|---|
-| **api** | `POST /api/v1/logs` 수신 → 검증 → SQS 전송 (호스트 `:3000` 개방) | Node.js / Express |
-| **worker** | SQS 폴링 → MongoDB 적재, 실패 시 DLQ로 격리 | Node.js |
-| **localstack** | 로컬에서 AWS SQS를 모사 | localstack |
-| **queue-init** | 기동 시 메인 큐 + DLQ + redrive policy 생성 (1회성) | amazon/aws-cli |
-| **mongodb** | 로그 최종 적재소 (볼륨으로 영속화) | mongo |
-
----
-
 ## 선택 이유 (Rationale)
 
 로그 적재 방식으로 **큐(Queue, B안) + DB(C안) 조합**을 선택했습니다. 인프라 엔지니어 관점의 이유는 다음과 같습니다.
@@ -42,10 +30,6 @@
 
 ## 실행 가이드
 
-### 사전 요구 사항
-
-- Docker / Docker Compose (v2)
-
 ### 1) 전체 환경 기동
 
 프로젝트 루트에서 아래 한 줄이면 됩니다.
@@ -54,14 +38,12 @@
 docker compose up --build
 ```
 
-- 최초 실행 시 `api` / `worker` 이미지가 빌드되고, `localstack` → `queue-init`(큐+DLQ 생성)  → `api` / `worker` 순서로 의존성에 맞춰 기동됩니다.
-- 백그라운드로 띄우려면: `docker compose up --build -d`
-- 기동 상태 확인: `docker compose ps` (localstack/mongodb/api가 `healthy`가 되면 준비 완료)
+- 위에 코드를 실행을 하면 `api` / `worker` 이미지가 빌드되고, `localstack` 다음에 바로 `queue-init`이 실행이 됩니다. 동시에 DLQ와 DerivedPolicy가 Script를 통해 실행이 됩니다.  `api` / `worker`은 의존성을 `queue-init`에 맞추었기 때문에, `queue-init` 실행 후 실행이 됩니다.
 
 ### 2) 종료
 
 ```bash
-docker compose down          # 컨테이너 정리 (볼륨 유지)
+docker compose down          # 컨테이너 정리
 docker compose down -v       # 볼륨까지 완전 삭제
 ```
 
@@ -225,10 +207,10 @@ docker exec supercent-localstack awslocal sqs receive-message \
 
 ### 포함 요소
 
-- **네트워크**: VPC(`10.20.0.0/16`), **Multi AZ**를 활용한 Public/Private Subnet, IGW, **AZ별 NAT Gateway**, 라우팅 테이블
-- **VPC Endpoint**: S3 Gateway Endpoint와 ECR API, ECR Docker Registry, SQS, CloudWatch Logs Interface Endpoint를 구성하여 Private Subnet의 ECS Fargate 태스크가 이미지 pull, 큐 처리, 로그 전송, S3 적재 시 NAT Gateway를 거치지 않고 AWS 내부 네트워크 경로로 통신
+- **네트워크**: VPC(`10.20.0.0/16`), **Multi AZ**를 활용한 Public/Private Subnet, **IGW**, **AZ별 NAT Gateway**, 라우팅 테이블
+- **VPC Endpoint**: **S3 Gateway Endpoint**와 **ECR API**, **ECR Docker Registry, SQS, CloudWatch Logs Interface Endpoint**를 구성하여 Private Subnet의 ECS Fargate 태스크가 이미지 pull, 큐 처리, 로그 전송, S3 적재 시 NAT Gateway를 거치지 않고 AWS 내부 네트워크 경로로 통신
 - **ALB를 통한 부하분산**: 퍼블릭 **ALB** 에서 Multi AZ Private Subnet의 ECS API 태스크로 분산
-- **ECR, ECS (Docker Registry & Service)**: **ECS Fargate** API 서비스(오토스케일 2~10) + Worker 서비스(오토스케일 2~20), **ECR** 이미지 저장소
+- **ECR, ECS (Docker Registry & Service)**: **ECS Fargate** API 서비스 + Worker 서비스, **ECR** 이미지 저장소
 - **로그 적재**: **SQS**를 활용하여 디커플링 및 비동기 처리 후 **S3**(raw logs)에 JSON log 적재. 그 다음 **Glue Data Catalog** 을 통해서 스키마로 변환 후 **Athena** 에서 로그 분석 기능
 - **보안/권한**: 최소 권한 IAM Task Role
 - **Monitoring**: CloudWatch Logs (API/Worker, 14일 보존)
