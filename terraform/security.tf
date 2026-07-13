@@ -38,22 +38,22 @@ resource "aws_security_group" "ecs" {
   }
 
   egress {
-    description = "Outbound HTTPS to VPC Endpoints"
+    description = "Outbound HTTPS to interface VPC endpoints"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
 
-  security_groups = [
-    aws_security_group.vpc_endpoint.id
-  ]
+    security_groups = [
+      aws_security_group.vpc_endpoint.id
+    ]
   }
-    egress {
-    description = "S3 access from ECS tasks"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
+
+  egress {
+    description     = "HTTPS to S3 gateway endpoint"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
     prefix_list_ids = [data.aws_prefix_list.s3.id]
-  
   }
 
 
@@ -68,7 +68,7 @@ data "aws_prefix_list" "s3" {
 
 resource "aws_security_group" "vpc_endpoint" {
   name        = "${var.project_name}-vpc-endpoint-sg"
-  description = "Allow HTTP from ECS to VPC endpoint"
+  description = "Allow HTTPS from ECS to VPC endpoints"
   vpc_id      = aws_vpc.main.id
 
   ingress {

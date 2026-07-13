@@ -40,7 +40,6 @@ variable "worker_desired_count" {
   default     = 2
 }
 
-
 variable "image_tag" {
   description = "Container image tag pushed by CI/CD."
   type        = string

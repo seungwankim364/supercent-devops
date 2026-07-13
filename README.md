@@ -226,11 +226,11 @@ docker exec supercent-localstack awslocal sqs receive-message \
 
 ### 포함 요소
 
-- **네트워크**: VPC(`10.20.0.0/16`), **Multi AZ**를 활용한 고가용성, IGW, **AZ별 NAT Gateway**
-- **VPC Endpoint**: SQS, S3 Endpoint, ECR API, ECR Docker VPC Endpoint를 열어서 ECS가 Image Pull를 할 때, NAT을 통해 외부로 안가고 내부에서 AWS 서비스끼리 통신
-- **ALB을 통한 부하분산**: 퍼블릭 **ALB** 에서 Multi AZ Private Subnet의 ECS API 태스크로 분산
+- **네트워크**: VPC(`10.20.0.0/16`), **Multi AZ**를 활용한 Public/Private Subnet, IGW, **AZ별 NAT Gateway**, 라우팅 테이블
+- **VPC Endpoint**: S3 Gateway Endpoint와 ECR API, ECR Docker Registry, SQS, CloudWatch Logs Interface Endpoint를 구성하여 Private Subnet의 ECS Fargate 태스크가 이미지 pull, 큐 처리, 로그 전송, S3 적재 시 NAT Gateway를 거치지 않고 AWS 내부 네트워크 경로로 통신
+- **ALB를 통한 부하분산**: 퍼블릭 **ALB** 에서 Multi AZ Private Subnet의 ECS API 태스크로 분산
 - **ECR, ECS (Docker Registry & Service)**: **ECS Fargate** API 서비스(오토스케일 2~10) + Worker 서비스(오토스케일 2~20), **ECR** 이미지 저장소
-- **로그 적재**: **SQS**를 활용하여 다커플링 및 비동기처리 그리고 **S3**(raw logs)에 JSON log 적재. 그 다음 **Glue Data Catalog** 을 통해서 스키마로 변환 후 **Athena** 에서 로그 분석 기능
+- **로그 적재**: **SQS**를 활용하여 디커플링 및 비동기 처리 후 **S3**(raw logs)에 JSON log 적재. 그 다음 **Glue Data Catalog** 을 통해서 스키마로 변환 후 **Athena** 에서 로그 분석 기능
 - **보안/권한**: 최소 권한 IAM Task Role
 - **Monitoring**: CloudWatch Logs (API/Worker, 14일 보존)
 
@@ -238,7 +238,7 @@ docker exec supercent-localstack awslocal sqs receive-message \
 
 | 파일 | 내용 |
 |---|---|
-| `network.tf` | VPC, Subnet, IGW, NAT, 라우팅 |
+| `network.tf` | VPC, Subnet, IGW, NAT, 라우팅, VPC Endpoint |
 | `ecs.tf` | ALB, ECS 클러스터/서비스/태스크 정의 |
 | `ecs_autoscaling.tf` | API/Worker 오토스케일링 |
 | `security.tf` | 보안 그룹 |
