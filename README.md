@@ -129,7 +129,7 @@ docker exec supercent-localstack awslocal sqs send-message \
   --message-body 'this-is-not-json{'
 ```
 
-```
+```bash
 worker-1              | Failed to process message: SyntaxError: Unexpected token 'h', "this-is-not-json{" is not valid JSON
 worker-1              |     at JSON.parse (<anonymous>)
 worker-1              |     at processMessage (/app/worker.js:9:23)
@@ -147,7 +147,7 @@ docker exec supercent-localstack awslocal sqs get-queue-attributes \
 
 ```
 
-```
+```bash
 # DLQ 쌓인 메세지 결과
 docker exec supercent-localstack awslocal sqs get-queue-attributes \
   --queue-url <http://localhost:4566/000000000000/supercent-queue-dlq> \
@@ -159,15 +159,14 @@ docker exec supercent-localstack awslocal sqs get-queue-attributes \
 }
 ```
 
-```
-
+```bash
 # DLQ 메시지 내용 + 수신 횟수(ApproximateReceiveCount) 확인
 docker exec supercent-localstack awslocal sqs receive-message \
   --queue-url http://localhost:4566/000000000000/supercent-queue-dlq \
   --attribute-names ApproximateReceiveCount --visibility-timeout 0
 ```
 
-```
+```bash
 ## DLQ 수신 횟수 결과
 {
     "Messages": [
@@ -188,7 +187,7 @@ docker exec supercent-localstack awslocal sqs receive-message \
 
 **결과:**
 
-```
+```bash
 - Worker 로그: "Failed to process message: SyntaxError ..." 5회 반복 (삭제하지 않음)
 - 메인 큐 ApproximateNumberOfMessages: 0   (메시지가 빠져나감)
 - DLQ ApproximateNumberOfMessages: 5        (격리 성공)
